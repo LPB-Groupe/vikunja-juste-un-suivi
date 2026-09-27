@@ -160,6 +160,15 @@ def courriels(r: Path) -> None:
     remplacer(r, f, "font-family: 'Open Sans', sans-serif;", "font-family: 'Public Sans', Arial, Helvetica, sans-serif;")
     remplacer(r, f, "background-color: #1973ff;", "background-color: #286355;")
     remplacer(r, f, "color: #0969da;", "color: #286355;")
+    # Le gabarit se dit compatible mode sombre mais ne définit aucune couleur
+    # sombre : Apple Mail fonce alors la carte et garde le texte gris foncé,
+    # illisible. Déclaré clair uniquement, il s'affiche tel que dessiné.
+    remplacer(r, f, '<meta name="color-scheme" content="light dark">', '<meta name="color-scheme" content="light only">')
+    remplacer(r, f, '<meta name="supported-color-schemes" content="light dark">',
+              '<meta name="supported-color-schemes" content="light only">')
+    remplacer(r, f, "        :root {\n            color-scheme: light dark;\n        }",
+              "        :root {\n            color-scheme: light only;\n        }\n"
+              "        a { color: #286355; }")
     # Nom d'expéditeur quand aucun n'est fourni, et nom affiché dans l'appli d'authentification (TOTP).
     remplacer(r, "pkg/mail/send_mail.go", 'opts.From = "Vikunja <"', f'opts.From = "{NOM} <"')
     remplacer(r, "pkg/user/totp.go", 'Issuer:      "Vikunja",', f'Issuer:      "{NOM}",')
@@ -173,6 +182,10 @@ def courriels(r: Path) -> None:
     remplacer(r, f, '"since_weeks": "une semaine|%[1] semaines",', '"since_weeks": "une semaine|%[1]s semaines",')
     renommer_dans_traductions(r, "pkg/i18n/lang/fr-FR.json", (), minimum=20)
     renommer_dans_traductions(r, "pkg/i18n/lang/en.json", (), minimum=20)
+    # Les traductions sont rangées sous « fr-FR », mais un compte réglé sur « fr »
+    # (defaultsettings.language: fr, hérité par les comptes OIDC) ne les trouve pas
+    # et reçoit ses courriels en anglais. Alias « fr » : même contenu.
+    shutil.copyfile(r / "pkg/i18n/lang/fr-FR.json", r / "pkg/i18n/lang/fr.json")
 
 
 if __name__ == "__main__":
