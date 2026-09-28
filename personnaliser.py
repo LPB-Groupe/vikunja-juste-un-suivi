@@ -184,8 +184,10 @@ def courriels(r: Path) -> None:
     renommer_dans_traductions(r, "pkg/i18n/lang/en.json", (), minimum=20)
     # Les traductions sont rangées sous « fr-FR », mais un compte réglé sur « fr »
     # (defaultsettings.language: fr, hérité par les comptes OIDC) ne les trouve pas
-    # et reçoit ses courriels en anglais. Alias « fr » : même contenu.
+    # et reçoit ses courriels en anglais. Alias « fr » : même contenu, et déclaré
+    # dans availableLanguages, sans quoi Init() ignore le fichier (cas de jus.2).
     shutil.copyfile(r / "pkg/i18n/lang/fr-FR.json", r / "pkg/i18n/lang/fr.json")
+    remplacer(r, "pkg/i18n/i18n.go", '\t"fr-FR":    true,\n', '\t"fr-FR":    true,\n\t"fr":       true,\n')
 
 
 if __name__ == "__main__":
