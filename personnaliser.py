@@ -190,10 +190,23 @@ def courriels(r: Path) -> None:
     remplacer(r, "pkg/i18n/i18n.go", '\t"fr-FR":    true,\n', '\t"fr-FR":    true,\n\t"fr":       true,\n')
 
 
+def comptes(r: Path) -> None:
+    """Seul ajout fonctionnel : créer d'avance le compte OIDC d'un responsable
+    (code/jus_comptes.go), pour qu'une action puisse lui être assignée avant
+    sa première connexion. Fermé tant que ses deux variables ne sont pas posées."""
+    print("Comptes anticipés")
+    shutil.copyfile(ICI / "code" / "jus_comptes.go", r / "pkg/routes/api/v1/jus_comptes.go")
+    ancre = '\t\tur.POST("/auth/openid/:provider/callback", openid.HandleCallback)\n\t}\n'
+    remplacer(r, "pkg/routes/routes.go", ancre,
+              ancre + '\n\t// Juste un suivi : comptes OIDC créés d\'avance (secret requis).\n'
+                      '\tur.PUT("/jus/comptes", apiv1.JusCreerCompte)\n')
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     racine = Path(sys.argv[1])
     interface(racine)
     courriels(racine)
+    comptes(racine)
     print("✓ habillage appliqué")

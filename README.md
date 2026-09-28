@@ -10,13 +10,17 @@ version modifiée d'un logiciel AGPL servi en ligne doit pouvoir en obtenir le c
 
 ## Ce qui change par rapport à Vikunja
 
-Uniquement de l'habillage, aucune fonctionnalité :
+De l'habillage, et un seul ajout fonctionnel (en fin de liste) :
 
 - logo, favicon et icônes de l'application ;
 - couleur principale (vert `#286355`) et typographie (Public Sans) de l'interface ;
 - le nom « Juste un suivi » à la place de « Vikunja » dans les titres et les textes (français et
   anglais) ;
 - les couleurs, le logo et le nom d'expéditeur des courriels de notification.
+- `PUT /api/v1/jus/comptes` ([`code/jus_comptes.go`](code/jus_comptes.go)) : crée d'avance le compte
+  « Se connecter avec Juste un CR » d'une personne, pour qu'une tâche puisse lui être assignée avant
+  sa première connexion. Fermé tant que `VIKUNJA_JUS_PROVISION_SECRET` et
+  `VIKUNJA_JUS_PROVISION_ISSUER` ne sont pas posés.
 
 « Propulsé par Vikunja » reste affiché en bas du menu et mène ici.
 
