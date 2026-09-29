@@ -169,6 +169,35 @@ FORMATS_ANGLAIS_FAUX = {"notifications.migration.failed.error"}
 INTERDITS = {"\u2014": "tiret cadratin", "\u2013": "tiret demi-cadratin", "\u00b7": "point médian"}
 
 
+# Écriture inclusive à point médian de la traduction française amont
+# (« utilisateur·rice », « sûr·e »). Le point médian ne se tape pas sur un
+# clavier français et Le Juste Cloud n'en affiche nulle part (tests du
+# 29/09/2026 : « Nom d'utilisateur·rice ou adresse courriel » à la connexion).
+# Formes du plus long au plus court : « ·rices » avant « ·rice », « ·e·s » avant « ·e ».
+POINT_MEDIAN = (
+    ("\u00b7rices", "s"), ("\u00b7rice", ""), ("\u00b7e\u00b7s", "s"), ("\u00b7es", "s"), ("\u00b7e", ""),
+)
+
+
+def sans_point_median(r: Path, fichier: str, minimum: int) -> None:
+    """Réécrit les formes à point médian et le tiret cadratin des valeurs
+    françaises, puis s'arrête s'il reste l'un des caractères interdits."""
+    chemin = r / fichier
+    texte = chemin.read_text(encoding="utf-8")
+    avant = texte.count("\u00b7")
+    if avant < minimum:
+        sys.exit(f"✗ {fichier} : {avant} points médians trouvés, au moins {minimum} attendus")
+    for forme, remplacement in POINT_MEDIAN:
+        texte = re.sub(forme + r"(?![A-Za-zÀ-ÿ])", remplacement, texte)
+    texte = texte.replace(" \u2014 ", ", ").replace("\u2014", "-").replace("\u2013", "-")
+    restes = [nom for car, nom in INTERDITS.items() if car in texte]
+    if restes:
+        sys.exit(f"✗ {fichier} garde : " + ", ".join(restes))
+    json.loads(texte)
+    chemin.write_text(texte, encoding="utf-8")
+    print(f"  {fichier} : {avant} points médians retirés")
+
+
 def formats(texte: str) -> list[tuple[str, str]]:
     return sorted({(m.group(1) or "1", m.group(2)) for m in FORMAT.finditer(texte)})
 
@@ -345,5 +374,7 @@ if __name__ == "__main__":
     racine = Path(sys.argv[1])
     interface(racine)
     courriels(racine)
+    remplacer(racine, "frontend/src/i18n/lang/fr-FR.json", "Rien à faire \u2014 Passez", "Rien à faire. Passez")
+    sans_point_median(racine, "frontend/src/i18n/lang/fr-FR.json", minimum=20)
     comptes(racine)
     print("✓ habillage appliqué")
