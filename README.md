@@ -32,8 +32,8 @@ De l'habillage, et un seul ajout fonctionnel (en fin de liste) :
 
 Le code source correspondant à une image se reconstitue ainsi :
 
-1. le code de Vikunja à la version indiquée dans [`VERSION`](VERSION) (`2.3.0-jus.1` = Vikunja
-   `v2.3.0`, habillage n° 1), téléchargé depuis [go-vikunja/vikunja](https://github.com/go-vikunja/vikunja) ;
+1. le code de Vikunja à la version indiquée dans [`VERSION`](VERSION) (`2.6.0-jus.1` = Vikunja
+   `v2.6.0`, habillage n° 1), téléchargé depuis [go-vikunja/vikunja](https://github.com/go-vikunja/vikunja) ;
 2. [`personnaliser.py`](personnaliser.py) appliqué à ce code, qui y dépose les fichiers de
    [`visuels/`](visuels) ;
 3. le `Dockerfile` de Vikunja, inchangé.
@@ -44,7 +44,7 @@ Le workflow [`image.yml`](.github/workflows/image.yml) enchaîne ces trois étap
 Pour reproduire l'image localement :
 
 ```sh
-git clone --depth 1 --branch v2.3.0 https://github.com/go-vikunja/vikunja.git vikunja
+git clone --depth 1 --branch v2.6.0 https://github.com/go-vikunja/vikunja.git vikunja
 python3 personnaliser.py vikunja
 docker build -t vikunja-juste-un-suivi vikunja
 ```
@@ -56,7 +56,7 @@ docker build -t vikunja-juste-un-suivi vikunja
    nommant le fichier et le texte introuvable : on corrige l'ancre, rien d'autre.
 3. Vérifier l'image sur une instance de test avant de la poser sur les tenants.
 
-Un changement d'habillage seul incrémente le numéro final (`2.3.0-jus.2`).
+Un changement d'habillage seul incrémente le numéro final (`2.6.0-jus.2`).
 
 ## Visuels
 

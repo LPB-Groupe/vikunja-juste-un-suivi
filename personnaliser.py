@@ -324,11 +324,11 @@ def courriels(r: Path) -> None:
               "\t// Juste un suivi : service francophone, courriels en français pour tous.\n"
               "\treturn \"fr-FR\"\n}")
     # Deux durées de retard lues dans la langue du compte et non dans celle du
-    # courriel (« overdue since 3 days » au milieu d'un texte français), et un
-    # appel sans langue du tout : la liste des retards perdait « en retard ».
+    # courriel (« overdue since 3 days » au milieu d'un texte français). L'appel
+    # sans langue de la liste des retards est corrigé en amont depuis la 2.6.0.
     f = "pkg/models/notifications.go"
     remplacer(r, f, "getOverdueSinceString(until, n.User.Language)))", "getOverdueSinceString(until, lang)))")
-    remplacer(r, f, 'i18n.T("notifications.task.overdue.overdue", getOverdueSinceString(until, n.User.Language))',
+    remplacer(r, f, 'i18n.T(lang, "notifications.task.overdue.overdue", getOverdueSinceString(until, n.User.Language))',
               'i18n.T(lang, "notifications.task.overdue.overdue", getOverdueSinceString(until, lang))')
     # Date d'expiration d'un jeton d'API au format français.
     remplacer(r, "pkg/models/api_tokens_expiry_notification.go", 'n.Token.ExpiresAt.Format("2006-01-02")',
