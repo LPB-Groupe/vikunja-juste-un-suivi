@@ -11,6 +11,7 @@ Deux mentions de Vikunja restent volontairement : « Propulsé par Vikunja »
 (l'attribution due au projet, AGPL v3) et le nom du service dans
 « Importer depuis Vikunja », qui désigne bien un export Vikunja.
 """
+import json
 import re
 import shutil
 import sys
@@ -143,13 +144,94 @@ def interface(r: Path) -> None:
     remplacer(r, "frontend/src/urls.ts", "export const POWERED_BY = 'https://vikunja.io/?utm_source=powered_by'",
               f"export const POWERED_BY = '{DEPOT}?utm_source=powered_by'")
     remplacer(r, "frontend/src/i18n/lang/fr-FR.json", '"poweredBy": "Propulsé par Vikunja",',
-              '"poweredBy": "Propulsé par Vikunja · code source",')
+              '"poweredBy": "Propulsé par Vikunja (code source)",')
     remplacer(r, "frontend/src/i18n/lang/en.json", '"poweredBy": "Powered by Vikunja",',
-              '"poweredBy": "Powered by Vikunja · source code",')
+              '"poweredBy": "Powered by Vikunja (source code)",')
 
     garder = ("poweredBy", "vikunja")
     renommer_dans_traductions(r, "frontend/src/i18n/lang/fr-FR.json", garder, minimum=20)
     renommer_dans_traductions(r, "frontend/src/i18n/lang/en.json", garder, minimum=20)
+
+
+# Signature commune à tous les courriels de Vikunja, alignée sur le pied des
+# récapitulatifs n8n (W1, W2). Les courriels partent de l'adresse du support :
+# y répondre le joint bien.
+SIGNATURE = (f"Message automatique de {NOM}, un service le Juste Cloud. "
+             "Une question ? Répondez à ce courriel, il parvient au support du Juste Cloud.")
+
+# Formats Go : « %[1]s », « %[2]d »... Un « %[1] » sans lettre est cassé (Go
+# affiche « %!(BADINDEX) ») ; un « %[1]s » sur un nombre affiche « %!s(int64=3) ».
+FORMAT = re.compile(r"%(?:\[(\d+)\])?([a-zA-Z]?)")
+# Clé où la version anglaise de Vikunja 2.3.0 est elle-même fausse : elle attend
+# %[2]s alors que le code ne passe qu'un argument (l'erreur). Le français, juste,
+# ne peut donc pas lui ressembler.
+FORMATS_ANGLAIS_FAUX = {"notifications.migration.failed.error"}
+INTERDITS = {"\u2014": "tiret cadratin", "\u2013": "tiret demi-cadratin", "\u00b7": "point médian"}
+
+
+def formats(texte: str) -> list[tuple[str, str]]:
+    return sorted({(m.group(1) or "1", m.group(2)) for m in FORMAT.finditer(texte)})
+
+
+def aplatir(donnees: dict, prefixe: str = "") -> dict[str, str]:
+    plat = {}
+    for cle, valeur in donnees.items():
+        complete = f"{prefixe}.{cle}" if prefixe else cle
+        if isinstance(valeur, dict):
+            plat.update(aplatir(valeur, complete))
+        else:
+            plat[complete] = valeur
+    return plat
+
+
+def traduire_courriels(r: Path) -> None:
+    """Pose nos textes français (traductions/courriels-fr.json) dans la traduction
+    fr-FR de Vikunja, après trois contrôles qui arrêtent la construction :
+    - chaque clé que le code Go demande existe chez nous (une clé ajoutée en amont
+      et non traduite partirait en anglais) ;
+    - chaque clé de chez nous existe en anglais (une clé renommée en amont) ;
+    - chaque format %[n]x correspond à l'anglais (une faute fait afficher
+      « %!s(BADINDEX) » dans le courriel)."""
+    nos = json.loads((ICI / "traductions" / "courriels-fr.json").read_text(encoding="utf-8"))
+    anglais = aplatir(json.loads((r / "pkg/i18n/lang/en.json").read_text(encoding="utf-8")))
+
+    utilisees = set()
+    for go in (r / "pkg").rglob("*.go"):
+        if go.name.endswith("_test.go"):
+            continue
+        utilisees |= set(re.findall(r'i18n\.TP?\(\s*\w+\s*,\s*"([^"]+)"', go.read_text(encoding="utf-8")))
+    utilisees |= {k for k in anglais if k.startswith("time.")}  # clés passées par variable (durées)
+
+    manquantes = sorted(utilisees - nos.keys())
+    if manquantes:
+        sys.exit("✗ clés de courriel sans traduction française : " + ", ".join(manquantes))
+    inconnues = sorted(nos.keys() - anglais.keys())
+    if inconnues:
+        sys.exit("✗ clés traduites qui n'existent plus dans Vikunja : " + ", ".join(inconnues))
+    for cle, texte in nos.items():
+        if cle not in FORMATS_ANGLAIS_FAUX and formats(texte) != formats(anglais[cle]):
+            sys.exit(f"✗ {cle} : formats {formats(texte)} au lieu de {formats(anglais[cle])} (anglais)")
+        if any(verbe == "" for _, verbe in formats(texte)):
+            sys.exit(f"✗ {cle} : format sans lettre, Go afficherait %!(BADINDEX)")
+        if "Vikunja" in texte:
+            sys.exit(f"✗ {cle} : « Vikunja » ne doit pas apparaître dans un courriel")
+        for car, nom in INTERDITS.items():
+            if car in texte:
+                sys.exit(f"✗ {cle} : {nom} interdit")
+
+    f = r / "pkg/i18n/lang/fr-FR.json"
+    francais = json.loads(f.read_text(encoding="utf-8"))
+    for cle, texte in nos.items():
+        noeud = francais
+        *parents, feuille = cle.split(".")
+        for p in parents:
+            noeud = noeud.setdefault(p, {})
+        noeud[feuille] = texte
+    restes = [k for k, v in aplatir(francais).items() if "Vikunja" in v]
+    if restes:
+        sys.exit("✗ fr-FR.json garde « Vikunja » dans : " + ", ".join(restes))
+    f.write_text(json.dumps(francais, ensure_ascii=False, indent="\t") + "\n", encoding="utf-8")
+    print(f"  pkg/i18n/lang/fr-FR.json : {len(nos)} textes, {len(utilisees)} clés utilisées, toutes traduites")
 
 
 def courriels(r: Path) -> None:
@@ -160,6 +242,8 @@ def courriels(r: Path) -> None:
     remplacer(r, f, "font-family: 'Open Sans', sans-serif;", "font-family: 'Public Sans', Arial, Helvetica, sans-serif;")
     remplacer(r, f, "background-color: #1973ff;", "background-color: #286355;")
     remplacer(r, f, "color: #0969da;", "color: #286355;")
+    # Boutons en casse normale, comme ceux des récapitulatifs n8n.
+    remplacer(r, f, "Text-transform: uppercase;", "")
     # Le gabarit se dit compatible mode sombre mais ne définit aucune couleur
     # sombre : Apple Mail fonce alors la carte et garde le texte gris foncé,
     # illisible. Déclaré clair uniquement, il s'affiche tel que dessiné.
@@ -169,23 +253,76 @@ def courriels(r: Path) -> None:
     remplacer(r, f, "        :root {\n            color-scheme: light dark;\n        }",
               "        :root {\n            color-scheme: light only;\n        }\n"
               "        a { color: #286355; }")
-    # Nom d'expéditeur quand aucun n'est fourni, et nom affiché dans l'appli d'authentification (TOTP).
+    # Gabarit « conversation » (commentaires, mentions) : même règle du thème clair,
+    # et liens verts (le nettoyage HTML retire le style posé sur les liens).
+    remplacer(r, f, '    <meta charset="utf-8">\n</head>',
+              '    <meta charset="utf-8">\n    <meta name="color-scheme" content="light only">\n'
+              '    <meta name="supported-color-schemes" content="light only">\n'
+              '    <style>:root { color-scheme: light only; } a { color: #286355; }</style>\n</head>')
+    # Signature sous la carte (gabarit classique), en pied du gabarit
+    # conversation, et en fin des deux versions texte.
+    pied = ('<p style="color: #6b706e; font-size: 11px; line-height: 1.5; Text-align: center; '
+            f'margin: 14px auto 24px; width: 520px;">{SIGNATURE}</p>')
+    remplacer(r, f, "{{ end }}\n{{ end }}\n</div>\n</div>\n</div>\n</body>",
+              "{{ end }}\n{{ end }}\n</div>\n" + pied + "\n</div>\n</div>\n</body>")
+    remplacer(r, f, "    {{ end }}\n</div>\n</body>",
+              "    {{ end }}\n"
+              f'    <div style="padding: 8px 20px 12px; color: #6b706e; font-size: 11px;">{SIGNATURE}</div>\n'
+              "</div>\n</body>")
+    remplacer(r, f, "{{ range $line := .FooterLines}}\n{{ $line.Text }}\n{{ end }}`",
+              "{{ range $line := .FooterLines}}\n{{ $line.Text }}\n{{ end }}\n-- \n" + SIGNATURE + "\n`", fois=2)
+    # Version texte : « Ouvrir la tâche : » (espace avant les deux-points).
+    remplacer(r, f, "{{ if .ActionURL }}{{ .ActionText }}:\n", "{{ if .ActionURL }}{{ .ActionText }} :\n", fois=2)
+    # Lien vers la tâche en tête des courriels de conversation : vert de la charte.
+    remplacer(r, "pkg/notifications/mail.go", 'style="color: #0969da; text-decoration: none;">(%s',
+              'style="color: #286355; text-decoration: none;">(%s')
+
+    # Expéditeur. Sans nom fourni : « Juste un suivi ». Pour une assignation, un
+    # commentaire, une mention ou un ajout à une équipe, Vikunja écrit
+    # « Prénom Nom via Vikunja » : « via Juste un suivi » désormais.
     remplacer(r, "pkg/mail/send_mail.go", 'opts.From = "Vikunja <"', f'opts.From = "{NOM} <"')
+    remplacer(r, "pkg/mail/send_mail.go", 'm.SetUserAgent("Vikunja " + version.Version)',
+              f'm.SetUserAgent("{NOM} (Vikunja " + version.Version + ")")')
+    remplacer(r, "pkg/user/user.go", 'Name:    u.GetName() + " via Vikunja",', f'Name:    u.GetName() + " via {NOM}",')
+    # Nom affiché dans l'appli d'authentification (TOTP).
     remplacer(r, "pkg/user/totp.go", 'Issuer:      "Vikunja",', f'Issuer:      "{NOM}",')
-    # Deux formats cassés dans la traduction française de Vikunja 2.3.0 : sans le
-    # « s », Go affiche « %!\"(BADINDEX) » au lieu du nom de la tâche ou du nombre.
-    f = "pkg/i18n/lang/fr-FR.json"
-    remplacer(r, f, '"message_to_assignee": "%[1]s vous a assigné à \\"%[2]\\".",',
-              '"message_to_assignee": "%[1]s vous a assigné la tâche « %[2]s ».",')
-    remplacer(r, f, '"subject_to_assignee": "Vous avez été assigné à \\"%[1]s\\" (%[2]s)",',
-              '"subject_to_assignee": "Nouvelle tâche pour vous : « %[1]s » (%[2]s)",')
-    remplacer(r, f, '"since_weeks": "une semaine|%[1] semaines",', '"since_weeks": "une semaine|%[1]s semaines",')
-    renommer_dans_traductions(r, "pkg/i18n/lang/fr-FR.json", (), minimum=20)
+
+    # Langue : le service est francophone. Tout courriel part en français, quelle
+    # que soit la langue réglée sur le compte (vide, « fr », « fr-FR », « en »...) :
+    # Vikunja traduit chaque courriel dans la langue que rend User.Lang().
+    remplacer(r, "pkg/user/user.go", "func (u *User) Lang() string {\n\treturn u.Language\n}",
+              "func (u *User) Lang() string {\n"
+              "\t// Juste un suivi : service francophone, courriels en français pour tous.\n"
+              "\treturn \"fr-FR\"\n}")
+    # Deux durées de retard lues dans la langue du compte et non dans celle du
+    # courriel (« overdue since 3 days » au milieu d'un texte français), et un
+    # appel sans langue du tout : la liste des retards perdait « en retard ».
+    f = "pkg/models/notifications.go"
+    remplacer(r, f, "getOverdueSinceString(until, n.User.Language)))", "getOverdueSinceString(until, lang)))")
+    remplacer(r, f, 'i18n.T("notifications.task.overdue.overdue", getOverdueSinceString(until, n.User.Language))',
+              'i18n.T(lang, "notifications.task.overdue.overdue", getOverdueSinceString(until, lang))')
+    # Date d'expiration d'un jeton d'API au format français.
+    remplacer(r, "pkg/models/api_tokens_expiry_notification.go", 'n.Token.ExpiresAt.Format("2006-01-02")',
+              'n.Token.ExpiresAt.Format("02/01/2006")', fois=2)
+    # Courriel de test de l'administrateur (vikunja testmail) : en français aussi.
+    f = "pkg/cmd/testmail.go"
+    remplacer(r, f, 'From("Vikunja <"+config.MailerFromEmail.GetString()+">").',
+              f'From("{NOM} <"+config.MailerFromEmail.GetString()+">").')
+    remplacer(r, f, 'Subject("Test from Vikunja").', f'Subject("Courriel de test de {NOM}").')
+    remplacer(r, f, 'Line("This is a test mail!").', 'Line("Ceci est un courriel de test.").')
+    remplacer(r, f, 'Line("If you received this, Vikunja is correctly set up to send emails.").',
+              f'Line("Si vous le recevez, {NOM} sait envoyer ses courriels.").')
+    remplacer(r, f, 'Action("Go to your instance", config.ServicePublicURL.GetString())',
+              f'Action("Ouvrir {NOM}", config.ServicePublicURL.GetString())')
+    remplacer(r, f, 'notifications.RenderMail(message, "en")', 'notifications.RenderMail(message, "fr-FR")')
+
+    traduire_courriels(r)
     renommer_dans_traductions(r, "pkg/i18n/lang/en.json", (), minimum=20)
-    # Les traductions sont rangées sous « fr-FR », mais un compte réglé sur « fr »
-    # (defaultsettings.language: fr, hérité par les comptes OIDC) ne les trouve pas
-    # et reçoit ses courriels en anglais. Alias « fr » : même contenu, et déclaré
-    # dans availableLanguages, sans quoi Init() ignore le fichier (cas de jus.2).
+    # Les traductions sont rangées sous « fr-FR ». User.Lang() rend toujours
+    # « fr-FR » désormais, mais un compte réglé sur « fr » (defaultsettings.language
+    # de jus.1, hérité par les premiers comptes OIDC) doit rester valide aux yeux du
+    # validateur des paramètres : alias « fr », même contenu, déclaré dans
+    # availableLanguages sans quoi Init() ignore le fichier (cas de jus.2).
     shutil.copyfile(r / "pkg/i18n/lang/fr-FR.json", r / "pkg/i18n/lang/fr.json")
     remplacer(r, "pkg/i18n/i18n.go", '\t"fr-FR":    true,\n', '\t"fr-FR":    true,\n\t"fr":       true,\n')
 

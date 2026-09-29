@@ -16,7 +16,11 @@ De l'habillage, et un seul ajout fonctionnel (en fin de liste) :
 - couleur principale (vert `#286355`) et typographie (Public Sans) de l'interface ;
 - le nom « Juste un suivi » à la place de « Vikunja » dans les titres et les textes (français et
   anglais) ;
-- les couleurs, le logo et le nom d'expéditeur des courriels de notification.
+- les couleurs, le logo, le nom d'expéditeur et la signature des courriels de notification ;
+- des courriels **toujours en français**, quelle que soit la langue réglée sur le compte, avec nos
+  propres textes ([`traductions/courriels-fr.json`](traductions/courriels-fr.json)) à la place de la
+  traduction française de Vikunja, incomplète. `personnaliser.py` arrête la construction si une clé
+  utilisée par un courriel n'y figure pas ou si un format (`%[1]s`, `%[1]d`) diffère de l'anglais.
 - `PUT /api/v1/jus/comptes` ([`code/jus_comptes.go`](code/jus_comptes.go)) : crée d'avance le compte
   « Se connecter avec Juste un CR » d'une personne, pour qu'une tâche puisse lui être assignée avant
   sa première connexion. Fermé tant que `VIKUNJA_JUS_PROVISION_SECRET` et
