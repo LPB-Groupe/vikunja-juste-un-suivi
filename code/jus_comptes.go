@@ -130,9 +130,76 @@ func JusCreerCompte(c *echo.Context) error {
 		_ = s.Rollback()
 		return err
 	}
+	// Et le filtre « Mes actions », que la connexion crée aussi (personnaliser.py, filtres).
+	if err := models.CreateDefaultSavedFiltersForUser(s, u); err != nil {
+		_ = s.Rollback()
+		return err
+	}
 	if err := s.Commit(); err != nil {
 		_ = s.Rollback()
 		return err
 	}
 	return c.JSON(http.StatusCreated, jusCompteReponse{ID: u.ID, Username: u.Username, Cree: true})
+}
+
+// jusAutoriser applique au point d'entrée la même serrure que JusCreerCompte.
+func jusAutoriser(c *echo.Context) error {
+	secret := os.Getenv("VIKUNJA_JUS_PROVISION_SECRET")
+	if len(secret) < 32 || strings.TrimSpace(os.Getenv("VIKUNJA_JUS_PROVISION_ISSUER")) == "" {
+		return echo.NewHTTPError(http.StatusNotFound, "Not found")
+	}
+	fourni := c.Request().Header.Get("X-JC-Provision")
+	if subtle.ConstantTimeCompare([]byte(fourni), []byte(secret)) != 1 {
+		return echo.NewHTTPError(http.StatusUnauthorized, "Secret refusé.")
+	}
+	return nil
+}
+
+type jusFiltresReponse struct {
+	Crees   []string `json:"crees"`
+	DejaLa  int      `json:"deja_la"`
+	Ignores int      `json:"ignores"`
+}
+
+// JusFiltresParDefaut pose le filtre « Mes actions » sur chaque compte actif qui
+// ne l'a pas : les comptes nés avant jus.2, à la connexion « Juste un CR », n'en
+// ont jamais reçu. Rejouable sans effet : un compte qui l'a déjà est sauté.
+func JusFiltresParDefaut(c *echo.Context) error {
+	if err := jusAutoriser(c); err != nil {
+		return err
+	}
+
+	s := db.NewSession()
+	defer s.Close()
+
+	comptes := []*user.User{}
+	if err := s.Where("status = ?", user.StatusActive).Find(&comptes); err != nil {
+		return err
+	}
+	rep := jusFiltresReponse{Crees: []string{}}
+	for _, u := range comptes {
+		// Comptes de service (bots) : ils n'ont pas d'actions à suivre.
+		if u.BotOwnerID != 0 {
+			rep.Ignores++
+			continue
+		}
+		existe, err := s.Where("owner_id = ? AND title = ?", u.ID, "My Open Tasks").Exist(&models.SavedFilter{})
+		if err != nil {
+			return err
+		}
+		if existe {
+			rep.DejaLa++
+			continue
+		}
+		if err := models.CreateDefaultSavedFiltersForUser(s, u); err != nil {
+			_ = s.Rollback()
+			return err
+		}
+		rep.Crees = append(rep.Crees, u.Username)
+	}
+	if err := s.Commit(); err != nil {
+		_ = s.Rollback()
+		return err
+	}
+	return c.JSON(http.StatusOK, rep)
 }

@@ -10,7 +10,7 @@ version modifiée d'un logiciel AGPL servi en ligne doit pouvoir en obtenir le c
 
 ## Ce qui change par rapport à Vikunja
 
-De l'habillage, et un seul ajout fonctionnel (en fin de liste) :
+De l'habillage, et deux ajouts fonctionnels (en fin de liste) :
 
 - logo, favicon et icônes de l'application ;
 - couleur principale (vert `#286355`) et typographie (Public Sans) de l'interface ;
@@ -25,6 +25,15 @@ De l'habillage, et un seul ajout fonctionnel (en fin de liste) :
   « Se connecter avec Juste un CR » d'une personne, pour qu'une tâche puisse lui être assignée avant
   sa première connexion. Fermé tant que `VIKUNJA_JUS_PROVISION_SECRET` et
   `VIKUNJA_JUS_PROVISION_ISSUER` ne sont pas posés.
+- **Filtrer sur ses propres actions** sans connaître son identifiant (`u-…`, opaque avec la connexion
+  « Juste un CR ») :
+  - le mot-clé `moi` (ou `me`) dans `assignees` et `created_by` : `done = false && assignees in moi`
+    ([`code/jus_moi.go`](code/jus_moi.go), testé par [`code/jus_moi_test.go`](code/jus_moi_test.go)).
+    Limite : la vue Kanban d'un filtre enregistré ne le résout pas ;
+  - le filtre « Mes actions » (« My Open Tasks » en base, traduit par l'interface), que Vikunja ne
+    crée qu'à l'inscription par mot de passe : il naît désormais aussi à la première connexion
+    « Juste un CR » et avec les comptes créés d'avance. `PUT /api/v1/jus/filtres` (même secret que
+    `/jus/comptes`) le pose sur les comptes actifs qui ne l'ont pas encore ; rejouable sans effet.
 
 « Propulsé par Vikunja » reste affiché en bas du menu et mène ici.
 

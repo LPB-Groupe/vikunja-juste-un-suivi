@@ -365,7 +365,41 @@ def comptes(r: Path) -> None:
     ancre = '\t\tur.POST("/auth/openid/:provider/callback", openid.HandleCallback)\n\t}\n'
     remplacer(r, "pkg/routes/routes.go", ancre,
               ancre + '\n\t// Juste un suivi : comptes OIDC créés d\'avance (secret requis).\n'
-                      '\tur.PUT("/jus/comptes", apiv1.JusCreerCompte)\n')
+                      '\tur.PUT("/jus/comptes", apiv1.JusCreerCompte)\n'
+                      '\t// Juste un suivi : filtre « Mes actions » posé sur les comptes qui ne l\'ont pas.\n'
+                      '\tur.PUT("/jus/filtres", apiv1.JusFiltresParDefaut)\n')
+
+
+def filtres(r: Path) -> None:
+    """Filtrer sur ses propres actions sans connaître son identifiant opaque (u-…) :
+    le mot-clé « moi » (code/jus_moi.go), et le filtre « Mes actions » que Vikunja
+    ne crée qu'à l'inscription par mot de passe, désormais aussi à la première
+    connexion « Juste un CR » (et pour les comptes créés d'avance, jus_comptes.go)."""
+    print("Filtres")
+    shutil.copyfile(ICI / "code" / "jus_moi.go", r / "pkg/models/jus_moi.go")
+    shutil.copyfile(ICI / "code" / "jus_moi_test.go", r / "pkg/models/jus_moi_test.go")
+    # Toutes les listes de tâches (projets, vues, filtres enregistrés) passent par
+    # Search : « moi » y est remplacé avant la construction de la requête.
+    remplacer(r, "pkg/models/task_search.go",
+              "func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCount int64, err error) {\n",
+              "func (d *dbTaskSearcher) Search(opts *taskSearchOptions) (tasks []*Task, totalCount int64, err error) {\n"
+              "\n\t// Juste un suivi : « moi » désigne la personne connectée (jus_moi.go).\n"
+              "\tjusRemplacerMoi(d.s, d.a, opts.parsedFilters)\n")
+    # Première connexion OIDC : le filtre par défaut, comme à l'inscription.
+    remplacer(r, "pkg/modules/auth/auth.go",
+              "\t// And create their project\n\terr = models.CreateNewProjectForUser(s, u)\n\treturn\n}",
+              "\t// And create their project\n\terr = models.CreateNewProjectForUser(s, u)\n"
+              "\tif err != nil {\n\t\treturn\n\t}\n\n"
+              "\t// Juste un suivi : le filtre « Mes actions », comme à l'inscription par mot de passe.\n"
+              "\terr = models.CreateDefaultSavedFiltersForUser(s, u)\n\treturn\n}")
+    # Le filtre garde son titre technique « My Open Tasks » en base : l'interface
+    # le traduit (getProjectTitle.ts), mais le français n'avait pas la clé.
+    remplacer(r, "frontend/src/i18n/lang/fr-FR.json", '\t\t"inboxTitle": "Boîte de réception",\n',
+              '\t\t"inboxTitle": "Boîte de réception",\n\t\t"myOpenTasksFilterTitle": "Mes actions",\n')
+    remplacer(r, "frontend/src/i18n/lang/fr-FR.json", '"assignees": "Les responsables de la tâche",',
+              '"assignees": "Les responsables de la tâche (« moi » pour vous-même : assignees in moi)",')
+    remplacer(r, "frontend/src/i18n/lang/en.json", '"assignees": "The assignees of the task",',
+              '"assignees": "The assignees of the task (\\"me\\" for yourself: assignees in me)",')
 
 
 if __name__ == "__main__":
@@ -375,6 +409,7 @@ if __name__ == "__main__":
     interface(racine)
     courriels(racine)
     remplacer(racine, "frontend/src/i18n/lang/fr-FR.json", "Rien à faire \u2014 Passez", "Rien à faire. Passez")
-    sans_point_median(racine, "frontend/src/i18n/lang/fr-FR.json", minimum=20)
     comptes(racine)
+    filtres(racine)
+    sans_point_median(racine, "frontend/src/i18n/lang/fr-FR.json", minimum=20)
     print("✓ habillage appliqué")
